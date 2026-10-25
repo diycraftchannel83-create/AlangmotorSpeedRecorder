@@ -112,11 +112,11 @@ class _RecorderHomeState extends State<RecorderHome> {
 
   Future<void> _onPosition(Position p) async {
     if (!mounted || !_recording || _tripId == null) return;
-    final age = DateTime.now().difference(p.timestamp).abs();
+    final ageMs = DateTime.now().millisecondsSinceEpoch - p.timestamp.millisecondsSinceEpoch;
     final speed = p.speed.isFinite && p.speed >= 0 ? p.speed : 0.0;
     // Retain raw accepted samples, but reject stale fixes and very poor
     // horizontal accuracy. Threshold is configurable in a future iteration.
-    if (age > const Duration(seconds: 5) || !p.accuracy.isFinite || p.accuracy > 50) {
+    if (ageMs > 5000 || ageMs < -5000 || !p.accuracy.isFinite || p.accuracy > 50) {
       setState(() {
         _position = p;
         _status = 'GPS lemah/data lama — titik tidak disimpan';

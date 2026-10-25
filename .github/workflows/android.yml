@@ -33,6 +33,10 @@ jobs:
           cp /tmp/flutter_bootstrap/android/gradlew.bat android/gradlew.bat
           cp /tmp/flutter_bootstrap/android/gradle/wrapper/gradle-wrapper.jar android/gradle/wrapper/gradle-wrapper.jar
           cp /tmp/flutter_bootstrap/android/gradle/wrapper/gradle-wrapper.properties android/gradle/wrapper/gradle-wrapper.properties
+          # The repository was bootstrapped from an empty repo, so copy the
+          # generated Android resources required by LaunchTheme and launcher icon.
+          mkdir -p android/app/src/main
+          cp -R /tmp/flutter_bootstrap/android/app/src/main/res android/app/src/main/res
           chmod +x android/gradlew
       - name: Install dependencies
         run: flutter pub get

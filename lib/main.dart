@@ -77,7 +77,7 @@ class _RecorderHomeState extends State<RecorderHome> {
     if (!await _ensureLocationPermission()) return;
     try {
       final id = await TripStore.instance.startTrip(_vehicle, DateTime.now().millisecondsSinceEpoch);
-      const settings = AndroidSettings(
+      final settings = AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
         intervalDuration: Duration(milliseconds: 500),

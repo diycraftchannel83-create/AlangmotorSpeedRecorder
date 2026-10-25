@@ -36,6 +36,8 @@ class _RecorderHomeState extends State<RecorderHome> {
   String _status = 'Siap merekam';
   bool _recording = false;
   double _maxMps = 0;
+  double _sumMps = 0;
+  int _sampleCount = 0;
   double _distanceM = 0;
   DateTime? _startedAt;
   Position? _lastAccepted;
@@ -92,6 +94,8 @@ class _RecorderHomeState extends State<RecorderHome> {
         _startedAt = DateTime.now();
         _status = 'Mencari data GPS...';
         _maxMps = 0;
+        _sumMps = 0;
+        _sampleCount = 0;
         _distanceM = 0;
         _lastAccepted = null;
       });
@@ -133,6 +137,8 @@ class _RecorderHomeState extends State<RecorderHome> {
     }
     _lastAccepted = p;
     _maxMps = math.max(_maxMps, speed);
+    _sumMps += speed;
+    _sampleCount++;
     _position = p;
     _status = p.accuracy <= 10 ? 'GPS baik' : 'GPS terkunci — akurasi sedang';
     final tripId = _tripId!;
@@ -221,10 +227,12 @@ class _RecorderHomeState extends State<RecorderHome> {
             Row(children: [
               Expanded(child: _metric('Maksimum', '${(_maxMps * 3.6).toStringAsFixed(1)} km/j')),
               const SizedBox(width: 8),
-              Expanded(child: _metric('Jarak', '${(_distanceM / 1000).toStringAsFixed(2)} km')),
+              Expanded(child: _metric('Rata-rata sampel', '${(_sampleCount == 0 ? 0 : _sumMps / _sampleCount * 3.6).toStringAsFixed(1)} km/j')),
               const SizedBox(width: 8),
-              Expanded(child: _metric('Durasi', _duration())),
+              Expanded(child: _metric('Jarak', '${(_distanceM / 1000).toStringAsFixed(2)} km')),
             ]),
+            const SizedBox(height: 8),
+            _metric('Durasi rekaman', _duration()),
             const SizedBox(height: 12),
             _metric('Akurasi posisi GPS', p == null ? '—' : '±${p.accuracy.toStringAsFixed(1)} m'),
             const SizedBox(height: 8),

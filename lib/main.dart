@@ -80,8 +80,8 @@ class _RecorderHomeState extends State<RecorderHome> {
       final settings = AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-        intervalDuration: Duration(milliseconds: 500),
-        foregroundNotificationConfig: ForegroundNotificationConfig(
+        intervalDuration: const Duration(milliseconds: 500),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'Alangmotor Speed Recorder aktif',
           notificationText: 'GPS sedang merekam perjalanan',
           enableWakeLock: true,

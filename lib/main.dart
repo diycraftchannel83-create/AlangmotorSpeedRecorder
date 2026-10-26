@@ -16,7 +16,7 @@ class SpeedRecorderApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'Alangmotor Speed Recorder',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)), useMaterial3: true),
+        theme: ThemeData(colorScheme: const ColorScheme.dark(primary: Color(0xFF39FF14), secondary: Color(0xFF39FF14), surface: Color(0xFF101510)), scaffoldBackgroundColor: const Color(0xFF050805), appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF050805), foregroundColor: Color(0xFF39FF14)), cardTheme: const CardThemeData(color: Color(0xFF101510), elevation: 4), textTheme: ThemeData.dark().textTheme.apply(bodyColor: Colors.white, displayColor: Colors.white), useMaterial3: true),
         home: const RecorderHome(),
       );
 }
@@ -219,7 +219,7 @@ class _RecorderHomeState extends State<RecorderHome> {
   Widget build(BuildContext context) {
     final p = _position;
     return Scaffold(
-      appBar: AppBar(title: const Text('Alangmotor Speed Recorder')),
+      appBar: AppBar(title: const Text('Alangmotor Speed Recorder', style: TextStyle(fontWeight: FontWeight.w700)),),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -238,7 +238,7 @@ class _RecorderHomeState extends State<RecorderHome> {
               SegmentedButton<bool>(segments: const [ButtonSegment(value: false, label: Text('m / km')), ButtonSegment(value: true, label: Text('ft / mi'))], selected: {_feet}, onSelectionChanged: (v) => setState(() => _feet = v.first)),
             ]),
             Card(
-              color: const Color(0xFF020609),
+              color: const Color(0xFF020602),
               clipBehavior: Clip.antiAlias,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -253,12 +253,12 @@ class _RecorderHomeState extends State<RecorderHome> {
                       Positioned(
                         top: 82,
                         child: Column(children: [
-                          const Text('km/h', style: TextStyle(color: Color(0xFF00B8F0), fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text(_feet ? 'mph' : 'km/h', style: const TextStyle(color: Color(0xFF39FF14), fontSize: 18, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 2),
-                          Text(_speedKmh.toStringAsFixed(0),
+                          Text((_feet ? _speedKmh * 0.621371 : _speedKmh).toStringAsFixed(0),
                             style: const TextStyle(color: Colors.white, fontSize: 68, height: 1, fontWeight: FontWeight.w300)),
                           const SizedBox(height: 4),
-                          Text('MAX ${(_maxMps * 3.6).toStringAsFixed(0)}',
+                          Text('MAX ${(_feet ? _maxMps * 2.23694 : _maxMps * 3.6).toStringAsFixed(0)}',
                             style: const TextStyle(color: Color(0xFFFFA51F), fontSize: 14, fontWeight: FontWeight.bold)),
                         ]),
                       ),
@@ -314,7 +314,7 @@ class _RecorderHomeState extends State<RecorderHome> {
                                     : '${s.distanceM.toStringAsFixed(0)} m',
                               ),
                             ),
-                            Expanded(child: Text('${s.speedKmh.toStringAsFixed(1)} km/h')),
+                            Expanded(child: Text('${(_feet ? s.speedKmh * 0.621371 : s.speedKmh).toStringAsFixed(1)} ${_feet ? 'mph' : 'km/h'}')),
                             Text(_formatElapsed(s.elapsedSeconds)),
                           ],
                         ),
@@ -386,9 +386,9 @@ class _SpeedChartPainter extends CustomPainter {
       final x = segments.length == 1 ? size.width / 2 : size.width * i / (segments.length - 1);
       final y = size.height - (segments[i].speedKmh / maxSpeed * (size.height - 12)) - 6;
       if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
-      canvas.drawCircle(Offset(x, y), 3, Paint()..color = const Color(0xFFFFA51F));
+      canvas.drawCircle(Offset(x, y), 3, Paint()..color = const Color(0xFFFF3B30));
     }
-    canvas.drawPath(path, Paint()..color = const Color(0xFF00B8F0)..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round);
+    canvas.drawPath(path, Paint()..color = const Color(0xFF39FF14)..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round);
   }
   @override
   bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) => oldDelegate.segments.length != segments.length;
@@ -419,7 +419,7 @@ class _AnalogSpeedometerPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 9
       ..shader = const SweepGradient(
-        colors: [Color(0xFF05212D), Color(0xFF00B8F0), Color(0xFFB7F0FF), Color(0xFF087EAC), Color(0xFF05212D)],
+        colors: [Color(0xFF05212D), Color(0xFF00B8F0), Color(0xFFB9FFAE), Color(0xFF178A12), Color(0xFF05212D)],
       ).createShader(bounds);
     canvas.drawCircle(center, radius * .96, rim);
 

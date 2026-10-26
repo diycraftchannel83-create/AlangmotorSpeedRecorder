@@ -257,23 +257,6 @@ class _RecorderHomeState extends State<RecorderHome> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _stop() async {
-    await _subscription?.cancel();
-    _subscription = null;
-    final id = _tripId;
-    if (id != null) {
-      await TripStore.instance.finishTrip(id, DateTime.now().millisecondsSinceEpoch);
-    }
-    if (mounted) {
-      setState(() {
-        _recording = false;
-        _armed = false;
-        _tripId = null;
-        _status = id == null ? 'GPS dinonaktifkan' : 'Rekaman disimpan di perangkat';
-      });
-    }
-  }
-
   String _duration() {
     final start = _startedAt;
     if (start == null) return '00:00';

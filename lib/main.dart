@@ -472,7 +472,7 @@ class _SpeedChartPainter extends CustomPainter {
       text: const TextSpan(text: 'km/h', style: TextStyle(color: Colors.white60, fontSize: 9)),
       textDirection: TextDirection.ltr,
     )..layout();
-    unitPainter.paint(canvas, Offset(0, 0));
+    unitPainter.paint(canvas, const Offset(0, 0));
   }
 
   @override

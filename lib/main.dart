@@ -41,6 +41,10 @@ class _RecorderHomeState extends State<RecorderHome> {
   double _distanceM = 0;
   DateTime? _startedAt;
   Position? _lastAccepted;
+  bool _armed = false;
+  bool _feet = false;
+  double _segmentStartM = 0;
+  final List<_SpeedSegment> _segments = [];
 
   double get _speedKmh {
     final speed = _position?.speed ?? 0;
@@ -73,10 +77,9 @@ class _RecorderHomeState extends State<RecorderHome> {
   }
 
   Future<void> _start() async {
-    if (_recording) return;
+    if (_recording || _armed) return;
     if (!await _ensureLocationPermission()) return;
     try {
-      final id = await TripStore.instance.startTrip(_vehicle, DateTime.now().millisecondsSinceEpoch);
       final settings = AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
@@ -89,15 +92,18 @@ class _RecorderHomeState extends State<RecorderHome> {
         ),
       );
       setState(() {
-        _tripId = id;
-        _recording = true;
-        _startedAt = DateTime.now();
-        _status = 'Mencari data GPS...';
+        _tripId = null;
+        _recording = false;
+        _armed = true;
+        _startedAt = null;
+        _status = 'Auto record aktif — mulai bergerak untuk merekam';
         _maxMps = 0;
         _sumMps = 0;
         _sampleCount = 0;
         _distanceM = 0;
         _lastAccepted = null;
+        _segmentStartM = 0;
+        _segments.clear();
       });
       _subscription = Geolocator.getPositionStream(locationSettings: settings).listen(
         _onPosition,
@@ -111,7 +117,7 @@ class _RecorderHomeState extends State<RecorderHome> {
   }
 
   Future<void> _onPosition(Position p) async {
-    if (!mounted || !_recording || _tripId == null) return;
+    if (!mounted || (!_armed && !_recording)) return;
     final ageMs = DateTime.now().millisecondsSinceEpoch - p.timestamp.millisecondsSinceEpoch;
     final speed = p.speed.isFinite && p.speed >= 0 ? p.speed : 0.0;
     // Retain raw accepted samples, but reject stale fixes and very poor
@@ -122,6 +128,16 @@ class _RecorderHomeState extends State<RecorderHome> {
         _status = 'GPS lemah/data lama — titik tidak disimpan';
       });
       return;
+    }
+    if (_armed && !_recording && speed * 3.6 >= 5.0) {
+      final id = await TripStore.instance.startTrip(_vehicle, p.timestamp.millisecondsSinceEpoch);
+      if (!mounted) return;
+      setState(() {
+        _tripId = id;
+        _recording = true;
+        _startedAt = DateTime.now();
+        _status = 'Gerakan terdeteksi — auto recording';
+      });
     }
     final previous = _lastAccepted;
     if (previous != null) {
@@ -137,12 +153,16 @@ class _RecorderHomeState extends State<RecorderHome> {
     }
     _lastAccepted = p;
     _maxMps = math.max(_maxMps, speed);
+    if (_recording && _distanceM - _segmentStartM >= 100) {
+      _segments.add(_SpeedSegment(distanceM: _segmentStartM + 100, speedKmh: speed * 3.6, elapsedSeconds: _startedAt == null ? 0 : p.timestamp.difference(_startedAt!).inSeconds));
+      _segmentStartM += 100;
+    }
     _sumMps += speed;
     _sampleCount++;
     _position = p;
     _status = p.accuracy <= 10 ? 'GPS baik' : 'GPS terkunci — akurasi sedang';
-    final tripId = _tripId!;
-    try {
+    final tripId = _tripId;
+    if (tripId != null && _recording) try {
       await TripStore.instance.addPoint(
         tripId,
         TripPoint(
@@ -173,8 +193,9 @@ class _RecorderHomeState extends State<RecorderHome> {
     if (mounted) {
       setState(() {
         _recording = false;
+        _armed = false;
         _tripId = null;
-        _status = 'Rekaman disimpan di perangkat';
+        _status = id == null ? 'Auto record dibatalkan' : 'Rekaman disimpan di perangkat';
       });
     }
   }
@@ -210,6 +231,10 @@ class _RecorderHomeState extends State<RecorderHome> {
               onSelectionChanged: _recording ? null : (v) => setState(() => _vehicle = v.first),
             ),
             const SizedBox(height: 20),
+            Row(children: [
+              const Expanded(child: Text('UNIT JARAK', style: TextStyle(fontWeight: FontWeight.bold))),
+              SegmentedButton<bool>(segments: const [ButtonSegment(value: false, label: Text('m / km')), ButtonSegment(value: true, label: Text('ft / mi'))], selected: {_feet}, onSelectionChanged: (v) => setState(() => _feet = v.first)),
+            ]),
             Card(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
@@ -229,19 +254,27 @@ class _RecorderHomeState extends State<RecorderHome> {
               const SizedBox(width: 8),
               Expanded(child: _metric('Rata-rata sampel', '${(_sampleCount == 0 ? 0 : _sumMps / _sampleCount * 3.6).toStringAsFixed(1)} km/j')),
               const SizedBox(width: 8),
-              Expanded(child: _metric('Jarak', '${(_distanceM / 1000).toStringAsFixed(2)} km')),
+              Expanded(child: _metric('Jarak', _feet ? '${(_distanceM * 3.28084).toStringAsFixed(0)} ft' : '${(_distanceM / 1000).toStringAsFixed(2)} km')),
             ]),
             const SizedBox(height: 8),
             _metric('Durasi rekaman', _duration()),
+            const SizedBox(height: 12),
+            Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('KECEPATAN SETIAP 100 M', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+              const SizedBox(height: 8),
+              SizedBox(height: 160, child: CustomPaint(painter: _SpeedChartPainter(_segments), child: const SizedBox.expand())),
+              if (_segments.isEmpty) const Text('Grafik terisi setelah menempuh 100 meter.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ..._segments.reversed.take(5).map((s) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [Expanded(child: Text(_feet ? '${(s.distanceM * 3.28084).toStringAsFixed(0)} ft' : '${s.distanceM.toStringAsFixed(0)} m')), Expanded(child: Text('${s.speedKmh.toStringAsFixed(1)} km/h')), Text(_formatElapsed(s.elapsedSeconds))])),
+            ]))),
             const SizedBox(height: 12),
             _metric('Akurasi posisi GPS', p == null ? '—' : '±${p.accuracy.toStringAsFixed(1)} m'),
             const SizedBox(height: 8),
             _metric('Koordinat', p == null ? 'Belum tersedia' : '${p.latitude.toStringAsFixed(6)}, ${p.longitude.toStringAsFixed(6)}'),
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: _recording ? _stop : _start,
-              icon: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
-              label: Text(_recording ? 'Selesai & Simpan' : 'Mulai Rekaman'),
+              onPressed: (_recording || _armed) ? _stop : _start,
+              icon: Icon((_recording || _armed) ? Icons.stop : Icons.fiber_manual_record),
+              label: Text(_recording ? 'STOP & SIMPAN' : _armed ? 'BATAL AUTO RECORD' : 'AUTO RECORD SAAT BERGERAK'),
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
             ),
             const SizedBox(height: 12),
@@ -262,4 +295,43 @@ class _RecorderHomeState extends State<RecorderHome> {
           ]),
         ),
       );
+}
+
+
+class _SpeedSegment {
+  const _SpeedSegment({required this.distanceM, required this.speedKmh, required this.elapsedSeconds});
+  final double distanceM;
+  final double speedKmh;
+  final int elapsedSeconds;
+}
+
+String _formatElapsed(int seconds) {
+  final m = (seconds ~/ 60).toString().padLeft(2, '0');
+  final s = (seconds % 60).toString().padLeft(2, '0');
+  return '$m:$s';
+}
+
+class _SpeedChartPainter extends CustomPainter {
+  _SpeedChartPainter(this.segments);
+  final List<_SpeedSegment> segments;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final grid = Paint()..color = Colors.white12..strokeWidth = 1;
+    for (var i = 0; i < 4; i++) {
+      final y = size.height * i / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    if (segments.isEmpty) return;
+    final maxSpeed = math.max(10.0, segments.map((s) => s.speedKmh).reduce(math.max) * 1.15);
+    final path = Path();
+    for (var i = 0; i < segments.length; i++) {
+      final x = segments.length == 1 ? size.width / 2 : size.width * i / (segments.length - 1);
+      final y = size.height - (segments[i].speedKmh / maxSpeed * (size.height - 12)) - 6;
+      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+      canvas.drawCircle(Offset(x, y), 3, Paint()..color = const Color(0xFFFFA51F));
+    }
+    canvas.drawPath(path, Paint()..color = const Color(0xFF00B8F0)..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round);
+  }
+  @override
+  bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) => oldDelegate.segments.length != segments.length;
 }

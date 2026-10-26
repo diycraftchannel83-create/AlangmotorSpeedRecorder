@@ -49,7 +49,9 @@ class _RecorderHomeState extends State<RecorderHome> {
   double _distanceM = 0;
   DateTime? _startedAt;
   Position? _lastAccepted;
-  bool _armed = false; // retained for compatibility with status rendering
+  bool _armed = false;
+  DateTime? _stoppedSince;
+  bool _autoStartRequested = false; // retained for compatibility with status rendering
   bool _feet = false;
   double _segmentStartM = 0;
   final List<_SpeedSegment> _segments = [];
@@ -58,6 +60,12 @@ class _RecorderHomeState extends State<RecorderHome> {
   void initState() {
     super.initState();
     _refreshBattery();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_autoStartRequested) {
+        _autoStartRequested = true;
+        _start();
+      }
+    });
     _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
       if (mounted) setState(() => _batteryState = state);
       _refreshBattery();
@@ -164,8 +172,8 @@ class _RecorderHomeState extends State<RecorderHome> {
       });
       return;
     }
-    // Mulai merekam otomatis segera setelah posisi GPS valid (bukan berdasarkan kecepatan).
-    if (_armed && !_recording) {
+    // Mulai merekam saat motor bergerak; GPS tetap dipantau ketika motor berhenti.
+    if (_armed && !_recording && speed * 3.6 >= 5.0) {
       try {
         final id = await TripStore.instance.startTrip(_vehicle, p.timestamp.millisecondsSinceEpoch);
         if (!mounted || !_armed) {
@@ -175,9 +183,30 @@ class _RecorderHomeState extends State<RecorderHome> {
         _tripId = id;
         _recording = true;
         _startedAt = p.timestamp;
+        _stoppedSince = null;
       } catch (e) {
         if (mounted) setState(() => _status = 'Gagal memulai rekaman: $e');
         return;
+      }
+    }
+
+    // Otomatis akhiri dan simpan perjalanan jika kecepatan di bawah 2 km/jam selama 10 detik.
+    if (_recording) {
+      if (speed * 3.6 < 2.0) {
+        _stoppedSince ??= p.timestamp;
+        if (p.timestamp.difference(_stoppedSince!).inSeconds >= 10) {
+          final id = _tripId;
+          if (id != null) await TripStore.instance.finishTrip(id, p.timestamp.millisecondsSinceEpoch);
+          _tripId = null;
+          _recording = false;
+          _startedAt = null;
+          _stoppedSince = null;
+          _lastAccepted = p;
+          if (mounted) setState(() => _status = 'Motor berhenti — rekaman otomatis disimpan');
+          return;
+        }
+      } else {
+        _stoppedSince = null;
       }
     }
     final previous = _lastAccepted;
@@ -203,7 +232,7 @@ class _RecorderHomeState extends State<RecorderHome> {
     _position = p;
     _status = _recording
         ? (p.accuracy <= 10 ? 'GPS hijau — rekaman otomatis berjalan' : 'GPS terkunci — akurasi sedang')
-        : (p.accuracy <= 10 ? 'GPS baik' : 'GPS terkunci — akurasi sedang');
+        : (p.accuracy <= 10 ? 'GPS hijau — menunggu motor bergerak' : 'GPS terkunci — akurasi sedang');
     final tripId = _tripId;
     if (tripId != null && _recording) {
       try {
@@ -289,8 +318,8 @@ class _RecorderHomeState extends State<RecorderHome> {
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    GestureDetector(onTap: (_recording || _armed) ? _stop : _start, child: Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: (_position != null && _position!.accuracy <= 50 && _position!.latitude.isFinite && _position!.longitude.isFinite) ? neonGreen : Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && _position!.accuracy <= 50 && _position!.latitude.isFinite && _position!.longitude.isFinite) ? neonGreen : Colors.redAccent, size: 25))),
-                    Expanded(child: Text(_recording ? 'TRIP RECORDING' : _armed ? 'MENUNGGU GPS VALID' : 'GPS SPEEDOMETER', textAlign: TextAlign.center, style: const TextStyle(color: neonGreen, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
+                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: (_position != null && _position!.accuracy <= 50 && _position!.latitude.isFinite && _position!.longitude.isFinite) ? neonGreen : Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && _position!.accuracy <= 50 && _position!.latitude.isFinite && _position!.longitude.isFinite) ? neonGreen : Colors.redAccent, size: 25)),
+                    Expanded(child: Text(_recording ? 'TRIP RECORDING' : _armed ? 'GPS AKTIF — SIAGA OTOMATIS' : 'GPS SPEEDOMETER', textAlign: TextAlign.center, style: const TextStyle(color: neonGreen, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
                     Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(_batteryState == BatteryState.charging || _batteryState == BatteryState.full ? Icons.battery_charging_full : (_batteryLevel != null && _batteryLevel! <= 15 ? Icons.battery_alert : Icons.battery_full), color: _batteryLevel == null ? Colors.grey : (_batteryLevel! <= 15 ? Colors.redAccent : neonGreen), size: 22), if (_batteryLevel != null) Text('$_batteryLevel%', style: TextStyle(color: _batteryLevel! <= 15 ? Colors.redAccent : neonGreen, fontSize: 10, fontWeight: FontWeight.bold))])),
                   ]),
                   SizedBox(

@@ -162,8 +162,9 @@ class _RecorderHomeState extends State<RecorderHome> {
     _position = p;
     _status = p.accuracy <= 10 ? 'GPS baik' : 'GPS terkunci — akurasi sedang';
     final tripId = _tripId;
-    if (tripId != null && _recording) try {
-      await TripStore.instance.addPoint(
+    if (tripId != null && _recording) {
+      try {
+        await TripStore.instance.addPoint(
         tripId,
         TripPoint(
           timestampMs: p.timestamp.millisecondsSinceEpoch,
@@ -175,10 +176,11 @@ class _RecorderHomeState extends State<RecorderHome> {
           bearingDeg: p.heading,
         ),
         maxSpeedMps: _maxMps,
-        distanceM: _distanceM,
-      );
-    } catch (e) {
-      _status = 'Gagal menyimpan titik: $e';
+          distanceM: _distanceM,
+        );
+      } catch (e) {
+        _status = 'Gagal menyimpan titik: $e';
+      }
     }
     if (mounted) setState(() {});
   }
@@ -259,13 +261,51 @@ class _RecorderHomeState extends State<RecorderHome> {
             const SizedBox(height: 8),
             _metric('Durasi rekaman', _duration()),
             const SizedBox(height: 12),
-            Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('KECEPATAN SETIAP 100 M', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
-              const SizedBox(height: 8),
-              SizedBox(height: 160, child: CustomPaint(painter: _SpeedChartPainter(_segments), child: const SizedBox.expand())),
-              if (_segments.isEmpty) const Text('Grafik terisi setelah menempuh 100 meter.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              ..._segments.reversed.take(5).map((s) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [Expanded(child: Text(_feet ? '${(s.distanceM * 3.28084).toStringAsFixed(0)} ft' : '${s.distanceM.toStringAsFixed(0)} m')), Expanded(child: Text('${s.speedKmh.toStringAsFixed(1)} km/h')), Text(_formatElapsed(s.elapsedSeconds))])),
-            ]))),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'KECEPATAN SETIAP 100 M',
+                      style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 160,
+                      child: CustomPaint(
+                        painter: _SpeedChartPainter(_segments),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    if (_segments.isEmpty)
+                      const Text(
+                        'Grafik terisi setelah menempuh 100 meter.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ..._segments.reversed.take(5).map(
+                      (s) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _feet
+                                    ? '${(s.distanceM * 3.28084).toStringAsFixed(0)} ft'
+                                    : '${s.distanceM.toStringAsFixed(0)} m',
+                              ),
+                            ),
+                            Expanded(child: Text('${s.speedKmh.toStringAsFixed(1)} km/h')),
+                            Text(_formatElapsed(s.elapsedSeconds)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
             _metric('Akurasi posisi GPS', p == null ? '—' : '±${p.accuracy.toStringAsFixed(1)} m'),
             const SizedBox(height: 8),

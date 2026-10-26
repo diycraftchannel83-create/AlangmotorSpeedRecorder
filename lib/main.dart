@@ -49,7 +49,7 @@ class _RecorderHomeState extends State<RecorderHome> {
   double _distanceM = 0;
   DateTime? _startedAt;
   Position? _lastAccepted;
-  bool _armed = false;
+  bool _armed = false; // retained for compatibility with status rendering
   bool _feet = false;
   double _segmentStartM = 0;
   final List<_SpeedSegment> _segments = [];
@@ -125,12 +125,14 @@ class _RecorderHomeState extends State<RecorderHome> {
           setOngoing: true,
         ),
       );
+      final tripId = await TripStore.instance.startTrip(_vehicle, DateTime.now().millisecondsSinceEpoch);
+      if (!mounted) return;
       setState(() {
-        _tripId = null;
-        _recording = false;
-        _armed = true;
-        _startedAt = null;
-        _status = 'Auto record aktif — mulai bergerak untuk merekam';
+        _tripId = tripId;
+        _recording = true;
+        _armed = false;
+        _startedAt = DateTime.now();
+        _status = 'GPS aktif — rekaman berjalan';
         _maxMps = 0;
         _sumMps = 0;
         _sampleCount = 0;
@@ -163,16 +165,7 @@ class _RecorderHomeState extends State<RecorderHome> {
       });
       return;
     }
-    if (_armed && !_recording && speed * 3.6 >= 5.0) {
-      final id = await TripStore.instance.startTrip(_vehicle, p.timestamp.millisecondsSinceEpoch);
-      if (!mounted) return;
-      setState(() {
-        _tripId = id;
-        _recording = true;
-        _startedAt = DateTime.now();
-        _status = 'Gerakan terdeteksi — auto recording';
-      });
-    }
+    // Rekaman dimulai manual saat tombol GPS diaktifkan; tidak ada auto-record saat bergerak.
     final previous = _lastAccepted;
     if (previous != null) {
       final seconds = p.timestamp.difference(previous.timestamp).inMilliseconds / 1000;
@@ -231,7 +224,7 @@ class _RecorderHomeState extends State<RecorderHome> {
         _recording = false;
         _armed = false;
         _tripId = null;
-        _status = id == null ? 'Auto record dibatalkan' : 'Rekaman disimpan di perangkat';
+        _status = id == null ? 'GPS dinonaktifkan' : 'Rekaman disimpan di perangkat';
       });
     }
   }
@@ -280,7 +273,7 @@ class _RecorderHomeState extends State<RecorderHome> {
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: neonGreen, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && _position!.latitude.isFinite && _position!.longitude.isFinite && _position!.latitude.abs() <= 90 && _position!.longitude.abs() <= 180) ? neonGreen : Colors.redAccent, size: 25)),
+                    GestureDetector(onTap: (_recording || _armed) ? _stop : _start, child: Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: (_recording || _armed) ? neonGreen : Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_recording || _armed) ? neonGreen : Colors.redAccent, size: 25))),
                     Expanded(child: Text(_recording ? 'TRIP RECORDING' : _armed ? 'AUTO RECORD AKTIF' : 'GPS SPEEDOMETER', textAlign: TextAlign.center, style: const TextStyle(color: neonGreen, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
                     Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(_batteryState == BatteryState.charging || _batteryState == BatteryState.full ? Icons.battery_charging_full : (_batteryLevel != null && _batteryLevel! <= 15 ? Icons.battery_alert : Icons.battery_full), color: _batteryLevel == null ? Colors.grey : (_batteryLevel! <= 15 ? Colors.redAccent : neonGreen), size: 22), if (_batteryLevel != null) Text('$_batteryLevel%', style: TextStyle(color: _batteryLevel! <= 15 ? Colors.redAccent : neonGreen, fontSize: 10, fontWeight: FontWeight.bold))])),
                   ]),
@@ -367,12 +360,6 @@ class _RecorderHomeState extends State<RecorderHome> {
             const SizedBox(height: 12),
             OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TripLogPage())), icon: const Icon(Icons.history), label: const Text('LOG HASIL REKAMAN SPEED'), style: OutlinedButton.styleFrom(foregroundColor: neonGreen, side: const BorderSide(color: neonGreen), minimumSize: const Size.fromHeight(50))),
             const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: (_recording || _armed) ? _stop : _start,
-              icon: Icon((_recording || _armed) ? Icons.stop : Icons.fiber_manual_record),
-              label: Text(_recording ? 'STOP & SIMPAN' : _armed ? 'BATAL AUTO RECORD' : 'AUTO RECORD SAAT BERGERAK'),
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
-            ),
             const SizedBox(height: 12),
             const Text('Data disimpan secara lokal. Akurasi posisi bukan ukuran akurasi kecepatan. Jangan mengoperasikan HP saat kendaraan berjalan.', textAlign: TextAlign.center),
           ],
@@ -429,7 +416,7 @@ class _SpeedChartPainter extends CustomPainter {
     canvas.drawPath(path, Paint()..color = const Color(0xFF39FF14)..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round);
   }
   @override
-  bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) => oldDelegate.segments.length != segments.length;
+  bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) => oldDelegate.segments != segments || oldDelegate.segments.length != segments.length;
 }
 
 
@@ -554,6 +541,19 @@ class TripDetailPage extends StatelessWidget {
       if (points.isEmpty) return const Center(child: Text('Rekaman ini belum memiliki titik GPS.'));
       return ListView(padding: const EdgeInsets.all(12), children: [
         Card(child: Padding(padding: const EdgeInsets.all(14), child: Text('TITIK GPS TERSIMPAN: ${points.length}', style: const TextStyle(color: neonGreen, fontWeight: FontWeight.bold)))),
+        Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('GRAFIK KECEPATAN REKAMAN', style: TextStyle(color: neonGreen, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          SizedBox(height: 190, child: CustomPaint(size: Size.infinite, painter: _SpeedChartPainter(List<_SpeedSegment>.generate(points.length, (i) {
+            final p = points[i];
+            final speed = ((p['speed_mps'] as num?)?.toDouble() ?? 0) * 3.6;
+            final ts = p['timestamp_ms'] as int? ?? 0;
+            final firstTs = points.first['timestamp_ms'] as int? ?? ts;
+            return _SpeedSegment(distanceM: (ts - firstTs) / 1000.0, speedKmh: speed, elapsedSeconds: ((ts - firstTs) / 1000).round());
+          })))),
+          const SizedBox(height: 8),
+          const Text('Sumbu horizontal: waktu sejak rekaman dimulai • Sumbu vertikal: kecepatan (km/h)', style: TextStyle(fontSize: 11, color: Colors.white60)),
+        ]))),
         ...points.map((p) {
           final speed = ((p['speed_mps'] as num?)?.toDouble() ?? 0) * 3.6; final accuracy = (p['accuracy_m'] as num?)?.toDouble() ?? 0;
           return Card(child: ListTile(leading: const Icon(Icons.speed, color: neonGreen), title: Text('${speed.toStringAsFixed(1)} km/h'),

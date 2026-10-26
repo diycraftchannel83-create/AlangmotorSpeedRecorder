@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'trip_store.dart';
 
+const neonGreen = Color(0xFF39FF14);
+
 void main() => runApp(const SpeedRecorderApp());
 
 class SpeedRecorderApp extends StatelessWidget {
@@ -243,25 +245,25 @@ class _RecorderHomeState extends State<RecorderHome> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 child: Column(children: [
-                  Text(_recording ? 'TRIP RECORDING' : _armed ? 'AUTO RECORD AKTIF' : 'GPS SPEEDOMETER',
-                    style: const TextStyle(color: Color(0xFF00B8F0), fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: neonGreen, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && DateTime.now().difference(_position!.timestamp).inSeconds.abs() <= 5 && _position!.accuracy <= 50) ? neonGreen : Colors.redAccent, size: 25)),
+                    Expanded(child: Text(_recording ? 'TRIP RECORDING' : _armed ? 'AUTO RECORD AKTIF' : 'GPS SPEEDOMETER', textAlign: TextAlign.center, style: const TextStyle(color: neonGreen, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
+                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.battery_full, color: Colors.redAccent, size: 25)),
+                  ]),
                   SizedBox(
                     width: double.infinity,
                     height: 310,
                     child: Stack(alignment: Alignment.center, children: [
                       Positioned.fill(child: CustomPaint(painter: _AnalogSpeedometerPainter(speedKmh: _speedKmh))),
                       Positioned(
-                        top: 82,
+                        top: 76,
                         child: Column(children: [
-                          Text(_feet ? 'mph' : 'km/h', style: const TextStyle(color: Color(0xFF39FF14), fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text((_feet ? _speedKmh * 0.621371 : _speedKmh).toStringAsFixed(0), style: const TextStyle(color: Colors.white, fontSize: 68, height: 1, fontWeight: FontWeight.w300)),
                           const SizedBox(height: 2),
-                          Text((_feet ? _speedKmh * 0.621371 : _speedKmh).toStringAsFixed(0),
-                            style: const TextStyle(color: Colors.white, fontSize: 68, height: 1, fontWeight: FontWeight.w300)),
-                          const SizedBox(height: 4),
-                          Text('MAX ${(_feet ? _maxMps * 2.23694 : _maxMps * 3.6).toStringAsFixed(0)}',
-                            style: const TextStyle(color: Color(0xFFFFA51F), fontSize: 14, fontWeight: FontWeight.bold)),
+                          Text('MAX ${(_feet ? _maxMps * 2.23694 : _maxMps * 3.6).toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFFFF3B30), fontSize: 14, fontWeight: FontWeight.bold)),
                         ]),
                       ),
+                      Positioned(top: 205, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF071007), border: Border.all(color: neonGreen, width: 1.2), borderRadius: BorderRadius.circular(8)), child: Text(_feet ? 'mph' : 'km/h', style: const TextStyle(color: neonGreen, fontSize: 17, fontWeight: FontWeight.bold)))),
                     ]),
                   ),
                   Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12)),
@@ -328,6 +330,8 @@ class _RecorderHomeState extends State<RecorderHome> {
             _metric('Akurasi posisi GPS', p == null ? '—' : '±${p.accuracy.toStringAsFixed(1)} m'),
             const SizedBox(height: 8),
             _metric('Koordinat', p == null ? 'Belum tersedia' : '${p.latitude.toStringAsFixed(6)}, ${p.longitude.toStringAsFixed(6)}'),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TripLogPage())), icon: const Icon(Icons.history), label: const Text('LOG HASIL REKAMAN SPEED'), style: OutlinedButton.styleFrom(foregroundColor: neonGreen, side: const BorderSide(color: neonGreen), minimumSize: const Size.fromHeight(50))),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: (_recording || _armed) ? _stop : _start,
@@ -462,4 +466,66 @@ class _AnalogSpeedometerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AnalogSpeedometerPainter oldDelegate) => oldDelegate.speedKmh != speedKmh;
+}
+
+class TripLogPage extends StatefulWidget {
+  const TripLogPage({super.key});
+  @override
+  State<TripLogPage> createState() => _TripLogPageState();
+}
+class _TripLogPageState extends State<TripLogPage> {
+  late Future<List<Map<String, Object?>>> _trips;
+  @override
+  void initState() { super.initState(); _load(); }
+  void _load() { _trips = TripStore.instance.listTrips(); }
+  String _date(Object? value) {
+    if (value is! int) return 'Waktu tidak tersedia';
+    final d = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}  ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Log Rekaman Speed'), actions: [IconButton(onPressed: () => setState(_load), icon: const Icon(Icons.refresh))]),
+    body: FutureBuilder<List<Map<String, Object?>>>(future: _trips, builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator(color: neonGreen));
+      if (snapshot.hasError) return Center(child: Text('Gagal membaca log: ${snapshot.error}'));
+      final trips = snapshot.data ?? [];
+      if (trips.isEmpty) return const Center(child: Text('Belum ada hasil rekaman tersimpan.'));
+      return ListView.builder(padding: const EdgeInsets.all(12), itemCount: trips.length, itemBuilder: (context, index) {
+        final trip = trips[index]; final maxMps = (trip['max_speed_mps'] as num?)?.toDouble() ?? 0; final distance = (trip['distance_m'] as num?)?.toDouble() ?? 0;
+        final end = trip['ended_at_ms'];
+        return Card(child: ListTile(leading: const Icon(Icons.route, color: neonGreen, size: 30),
+          title: Text('${trip['vehicle_type']} • ${(maxMps * 3.6).toStringAsFixed(1)} km/h'),
+          subtitle: Text('${_date(trip['started_at_ms'])}\nJarak ${(distance / 1000).toStringAsFixed(2)} km • ${end == null ? 'Belum selesai' : 'Selesai ${_date(end)}'}'),
+          isThreeLine: true, trailing: const Icon(Icons.chevron_right, color: neonGreen),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TripDetailPage(trip: trip)))));
+      });
+    }),
+  );
+}
+class TripDetailPage extends StatelessWidget {
+  const TripDetailPage({super.key, required this.trip});
+  final Map<String, Object?> trip;
+  String _time(Object? value) {
+    if (value is! int) return '--:--:--';
+    final d = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Detail Rekaman')),
+    body: FutureBuilder<List<Map<String, Object?>>>(future: TripStore.instance.getPoints(trip['id'] as int), builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator(color: neonGreen));
+      if (snapshot.hasError) return Center(child: Text('Gagal membaca titik: ${snapshot.error}'));
+      final points = snapshot.data ?? [];
+      if (points.isEmpty) return const Center(child: Text('Rekaman ini belum memiliki titik GPS.'));
+      return ListView(padding: const EdgeInsets.all(12), children: [
+        Card(child: Padding(padding: const EdgeInsets.all(14), child: Text('TITIK GPS TERSIMPAN: ${points.length}', style: const TextStyle(color: neonGreen, fontWeight: FontWeight.bold)))),
+        ...points.map((p) {
+          final speed = ((p['speed_mps'] as num?)?.toDouble() ?? 0) * 3.6; final accuracy = (p['accuracy_m'] as num?)?.toDouble() ?? 0;
+          return Card(child: ListTile(leading: const Icon(Icons.speed, color: neonGreen), title: Text('${speed.toStringAsFixed(1)} km/h'),
+            subtitle: Text('${_time(p['timestamp_ms'])} • Akurasi ±${accuracy.toStringAsFixed(1)} m\n${(p['latitude'] as num).toStringAsFixed(6)}, ${(p['longitude'] as num).toStringAsFixed(6)}'), isThreeLine: true));
+        }),
+      ]);
+    }),
+  );
 }

@@ -258,7 +258,7 @@ class _RecorderHomeState extends State<RecorderHome> {
                           Text(_speedKmh.toStringAsFixed(0),
                             style: const TextStyle(color: Colors.white, fontSize: 68, height: 1, fontWeight: FontWeight.w300)),
                           const SizedBox(height: 4),
-                          Text('MAX ' + (_maxMps * 3.6).toStringAsFixed(0),
+                          Text('MAX ${(_maxMps * 3.6).toStringAsFixed(0)}',
                             style: const TextStyle(color: Color(0xFFFFA51F), fontSize: 14, fontWeight: FontWeight.bold)),
                         ]),
                       ),

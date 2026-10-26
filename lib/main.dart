@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:async';
 import 'package:battery_plus/battery_plus.dart';
 
 import 'package:flutter/material.dart';
@@ -298,7 +297,7 @@ class _RecorderHomeState extends State<RecorderHome> {
                           Text('MAX ${(_feet ? _maxMps * 2.23694 : _maxMps * 3.6).toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFFFF3B30), fontSize: 14, fontWeight: FontWeight.bold)),
                         ]),
                       ),
-                      Positioned(top: 205, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF071007), border: Border.all(color: neonGreen, width: 1.2), borderRadius: BorderRadius.circular(8)), child: Text(_feet ? 'mph' : 'km/h', style: const TextStyle(color: neonGreen, fontSize: 17, fontWeight: FontWeight.bold)))),
+                      Positioned(top: 232, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF071007), border: Border.all(color: neonGreen, width: 1.2), borderRadius: BorderRadius.circular(8)), child: Text(_feet ? 'mph' : 'km/h', style: const TextStyle(color: neonGreen, fontSize: 17, fontWeight: FontWeight.bold)))),
                     ]),
                   ),
                   Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12)),

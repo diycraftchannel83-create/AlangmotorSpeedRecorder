@@ -303,7 +303,7 @@ class _RecorderHomeState extends State<RecorderHome> {
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                     Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: (_position != null && _position!.accuracy <= 50 && _position!.latitude.isFinite && _position!.longitude.isFinite) ? neonGreen : Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && _position!.accuracy <= 50 && _position!.latitude.isFinite && _position!.longitude.isFinite) ? neonGreen : Colors.redAccent, size: 25)),
                     Expanded(child: Text(_recording ? 'TRIP RECORDING' : _armed ? 'GPS AKTIF — SIAGA OTOMATIS' : 'GPS SPEEDOMETER', textAlign: TextAlign.center, style: const TextStyle(color: neonGreen, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
-                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(_batteryState == BatteryState.charging || _batteryState == BatteryState.full ? Icons.battery_charging_full : (_batteryLevel != null && _batteryLevel! <= 15 ? Icons.battery_alert : Icons.battery_full), color: _batteryLevel == null ? Colors.grey : (_batteryLevel! <= 15 ? Colors.redAccent : neonGreen), size: 22), if (_batteryLevel != null) Text('$_batteryLevel%', style: TextStyle(color: _batteryLevel! <= 15 ? Colors.redAccent : neonGreen, fontSize: 10, fontWeight: FontWeight.bold))])),
+                    Container(width: 58, height: 40, padding: const EdgeInsets.symmetric(horizontal: 3), decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [Icon(_batteryState == BatteryState.charging || _batteryState == BatteryState.full ? Icons.battery_charging_full : (_batteryLevel != null && _batteryLevel! <= 15 ? Icons.battery_alert : Icons.battery_full), color: _batteryLevel == null ? Colors.grey : (_batteryLevel! <= 15 ? Colors.redAccent : neonGreen), size: 18), if (_batteryLevel != null) Flexible(child: Text('$_batteryLevel%', maxLines: 1, overflow: TextOverflow.clip, style: TextStyle(color: _batteryLevel! <= 15 ? Colors.redAccent : neonGreen, fontSize: 9, fontWeight: FontWeight.bold))) ])),
                   ]),
                   SizedBox(
                     width: double.infinity,
@@ -425,26 +425,59 @@ String _formatElapsed(int seconds) {
 class _SpeedChartPainter extends CustomPainter {
   _SpeedChartPainter(this.segments);
   final List<_SpeedSegment> segments;
+
   @override
   void paint(Canvas canvas, Size size) {
+    // Fixed 0–300 km/h axis so every saved trip uses the same scale.
+    const left = 38.0;
+    const right = 6.0;
+    const top = 8.0;
+    const bottom = 18.0;
+    final plotWidth = math.max(1.0, size.width - left - right);
+    final plotHeight = math.max(1.0, size.height - top - bottom);
     final grid = Paint()..color = Colors.white12..strokeWidth = 1;
-    for (var i = 0; i < 4; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    final labelStyle = const TextStyle(color: Colors.white70, fontSize: 9);
+    for (var speed = 0; speed <= 300; speed += 20) {
+      final y = top + plotHeight * (1 - speed / 300);
+      canvas.drawLine(Offset(left, y), Offset(left + plotWidth, y), grid);
+    }
+    const labels = <int>[0, 20, 40, 80, 120, 160, 200, 240, 280, 300];
+    for (final speed in labels) {
+      final y = top + plotHeight * (1 - speed / 300);
+      final painter = TextPainter(
+        text: TextSpan(text: '$speed', style: labelStyle),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: left - 4);
+      painter.paint(canvas, Offset(left - painter.width - 5, y - painter.height / 2));
     }
     if (segments.isEmpty) return;
-    final maxSpeed = math.max(10.0, segments.map((s) => s.speedKmh).reduce(math.max) * 1.15);
     final path = Path();
     for (var i = 0; i < segments.length; i++) {
-      final x = segments.length == 1 ? size.width / 2 : size.width * i / (segments.length - 1);
-      final y = size.height - (segments[i].speedKmh / maxSpeed * (size.height - 12)) - 6;
-      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+      final x = left + (segments.length == 1 ? plotWidth / 2 : plotWidth * i / (segments.length - 1));
+      final speed = segments[i].speedKmh.clamp(0.0, 300.0);
+      final y = top + plotHeight * (1 - speed / 300);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
       canvas.drawCircle(Offset(x, y), 3, Paint()..color = const Color(0xFFFF3B30));
     }
-    canvas.drawPath(path, Paint()..color = const Color(0xFF39FF14)..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round);
+    canvas.drawPath(path, Paint()
+      ..color = const Color(0xFF39FF14)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round);
+    final unitPainter = TextPainter(
+      text: const TextSpan(text: 'km/h', style: TextStyle(color: Colors.white60, fontSize: 9)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    unitPainter.paint(canvas, Offset(0, 0));
   }
+
   @override
-  bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) => oldDelegate.segments != segments || oldDelegate.segments.length != segments.length;
+  bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) =>
+      oldDelegate.segments != segments || oldDelegate.segments.length != segments.length;
 }
 
 

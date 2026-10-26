@@ -238,15 +238,33 @@ class _RecorderHomeState extends State<RecorderHome> {
               SegmentedButton<bool>(segments: const [ButtonSegment(value: false, label: Text('m / km')), ButtonSegment(value: true, label: Text('ft / mi'))], selected: {_feet}, onSelectionChanged: (v) => setState(() => _feet = v.first)),
             ]),
             Card(
+              color: const Color(0xFF020609),
+              clipBehavior: Clip.antiAlias,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 child: Column(children: [
-                  Text(_recording ? 'KECEPATAN GPS' : 'SPEEDOMETER GPS', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(_speedKmh.toStringAsFixed(1), style: Theme.of(context).textTheme.displayLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 68)),
-                  const Text('km/jam'),
-                  const SizedBox(height: 12),
-                  Text(_status, textAlign: TextAlign.center),
+                  Text(_recording ? 'TRIP RECORDING' : _armed ? 'AUTO RECORD AKTIF' : 'GPS SPEEDOMETER',
+                    style: const TextStyle(color: Color(0xFF00B8F0), fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 310,
+                    child: Stack(alignment: Alignment.center, children: [
+                      Positioned.fill(child: CustomPaint(painter: _AnalogSpeedometerPainter(speedKmh: _speedKmh))),
+                      Positioned(
+                        top: 82,
+                        child: Column(children: [
+                          const Text('km/h', style: TextStyle(color: Color(0xFF00B8F0), fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Text(_speedKmh.toStringAsFixed(0),
+                            style: const TextStyle(color: Colors.white, fontSize: 68, height: 1, fontWeight: FontWeight.w300)),
+                          const SizedBox(height: 4),
+                          Text('MAX ' + (_maxMps * 3.6).toStringAsFixed(0),
+                            style: const TextStyle(color: Color(0xFFFFA51F), fontSize: 14, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 ]),
               ),
             ),
@@ -374,4 +392,74 @@ class _SpeedChartPainter extends CustomPainter {
   }
   @override
   bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) => oldDelegate.segments.length != segments.length;
+}
+
+
+class _AnalogSpeedometerPainter extends CustomPainter {
+  const _AnalogSpeedometerPainter({required this.speedKmh});
+  final double speedKmh;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final side = math.min(size.width, size.height);
+    final center = Offset(size.width / 2, size.height * .57);
+    final radius = side * .43;
+    final bounds = Rect.fromCircle(center: center, radius: radius);
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 14
+      ..color = const Color(0xFF00B8F0).withValues(alpha: .16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawCircle(center, radius * .96, glow);
+    canvas.drawCircle(center, radius, Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..color = Colors.white);
+    final rim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 9
+      ..shader = const SweepGradient(
+        colors: [Color(0xFF05212D), Color(0xFF00B8F0), Color(0xFFB7F0FF), Color(0xFF087EAC), Color(0xFF05212D)],
+      ).createShader(bounds);
+    canvas.drawCircle(center, radius * .96, rim);
+
+    const start = math.pi * .75;
+    const sweep = math.pi * 1.5;
+    for (var i = 0; i <= 60; i++) {
+      final angle = start + sweep * i / 60;
+      final major = i % 5 == 0;
+      final innerR = radius * (major ? .72 : .79);
+      final outerR = radius * .88;
+      final paint = Paint()
+        ..color = major ? Colors.white : const Color(0xFF00B8F0).withValues(alpha: .85)
+        ..strokeWidth = major ? 2.2 : 1
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(center.dx + math.cos(angle) * innerR, center.dy + math.sin(angle) * innerR),
+        Offset(center.dx + math.cos(angle) * outerR, center.dy + math.sin(angle) * outerR),
+        paint,
+      );
+      if (major) {
+        final label = (i ~/ 5 * 10).toString();
+        final labelR = radius * .61;
+        final pos = Offset(center.dx + math.cos(angle) * labelR, center.dy + math.sin(angle) * labelR);
+        final tp = TextPainter(
+          text: TextSpan(text: label, style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: radius * .095, fontWeight: FontWeight.bold)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(pos.dx - tp.width / 2, pos.dy - tp.height / 2));
+      }
+    }
+    final needleAngle = start + sweep * (speedKmh.clamp(0, 120) / 120);
+    final needlePaint = Paint()
+      ..color = const Color(0xFFFFA51F)
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(center, Offset(center.dx + math.cos(needleAngle) * radius * .69, center.dy + math.sin(needleAngle) * radius * .69), needlePaint);
+    canvas.drawCircle(center, 8, Paint()..color = const Color(0xFFFFA51F));
+    canvas.drawCircle(center, 3, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AnalogSpeedometerPainter oldDelegate) => oldDelegate.speedKmh != speedKmh;
 }

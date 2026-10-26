@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:async';
+import 'package:battery_plus/battery_plus.dart';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -32,6 +34,11 @@ class RecorderHome extends StatefulWidget {
 
 class _RecorderHomeState extends State<RecorderHome> {
   StreamSubscription<Position>? _subscription;
+  final Battery _battery = Battery();
+  StreamSubscription<BatteryState>? _batterySubscription;
+  Timer? _batteryRefreshTimer;
+  int? _batteryLevel;
+  BatteryState? _batteryState;
   Position? _position;
   int? _tripId;
   String _vehicle = 'Motor';
@@ -47,6 +54,27 @@ class _RecorderHomeState extends State<RecorderHome> {
   bool _feet = false;
   double _segmentStartM = 0;
   final List<_SpeedSegment> _segments = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshBattery();
+    _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
+      if (mounted) setState(() => _batteryState = state);
+      _refreshBattery();
+    });
+    _batteryRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshBattery());
+  }
+
+  Future<void> _refreshBattery() async {
+    try {
+      final level = await _battery.batteryLevel;
+      final state = await _battery.batteryState;
+      if (mounted) setState(() { _batteryLevel = level; _batteryState = state; });
+    } catch (_) {
+      if (mounted) setState(() => _batteryLevel = null);
+    }
+  }
 
   double get _speedKmh {
     final speed = _position?.speed ?? 0;
@@ -70,9 +98,14 @@ class _RecorderHomeState extends State<RecorderHome> {
     // Android 10+ requires background-location permission for some background
     // access patterns. A foreground location service is started explicitly.
     if (permission != LocationPermission.always) {
-      final bg = await Permission.locationAlways.status;
-      if (bg.isDenied) {
-        await Permission.locationAlways.request();
+      var bg = await Permission.locationAlways.status;
+      if (bg.isDenied || bg.isRestricted) {
+        bg = await Permission.locationAlways.request();
+      }
+      if (!bg.isGranted) {
+        if (mounted) setState(() => _status = 'Izinkan lokasi: Always / Selalu di pengaturan aplikasi agar GPS berjalan di latar belakang');
+        await openAppSettings();
+        return false;
       }
     }
     return true;
@@ -213,6 +246,8 @@ class _RecorderHomeState extends State<RecorderHome> {
 
   @override
   void dispose() {
+    _batteryRefreshTimer?.cancel();
+    _batterySubscription?.cancel();
     _subscription?.cancel();
     super.dispose();
   }
@@ -246,9 +281,9 @@ class _RecorderHomeState extends State<RecorderHome> {
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                 child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: neonGreen, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && DateTime.now().difference(_position!.timestamp).inSeconds.abs() <= 5 && _position!.accuracy <= 50) ? neonGreen : Colors.redAccent, size: 25)),
+                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: neonGreen, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Icon(Icons.gps_fixed, color: (_position != null && _position!.latitude.isFinite && _position!.longitude.isFinite && _position!.latitude.abs() <= 90 && _position!.longitude.abs() <= 180) ? neonGreen : Colors.redAccent, size: 25)),
                     Expanded(child: Text(_recording ? 'TRIP RECORDING' : _armed ? 'AUTO RECORD AKTIF' : 'GPS SPEEDOMETER', textAlign: TextAlign.center, style: const TextStyle(color: neonGreen, fontWeight: FontWeight.w800, letterSpacing: 1.5))),
-                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.battery_full, color: Colors.redAccent, size: 25)),
+                    Container(width: 44, height: 40, decoration: BoxDecoration(border: Border.all(color: Colors.redAccent, width: 1.5), borderRadius: BorderRadius.circular(9)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(_batteryState == BatteryState.charging || _batteryState == BatteryState.full ? Icons.battery_charging_full : (_batteryLevel != null && _batteryLevel! <= 15 ? Icons.battery_alert : Icons.battery_full), color: _batteryLevel == null ? Colors.grey : (_batteryLevel! <= 15 ? Colors.redAccent : neonGreen), size: 22), if (_batteryLevel != null) Text('$_batteryLevel%', style: TextStyle(color: _batteryLevel! <= 15 ? Colors.redAccent : neonGreen, fontSize: 10, fontWeight: FontWeight.bold))])),
                   ]),
                   SizedBox(
                     width: double.infinity,

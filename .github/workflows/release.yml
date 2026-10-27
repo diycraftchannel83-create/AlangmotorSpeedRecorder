@@ -1,0 +1,134 @@
+name: Release Android APK and AAB
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag, for example v1.0.0"
+        required: true
+        type: string
+      release_notes:
+        description: "Short release notes"
+        required: false
+        default: "First release of Alangmotor Speed Recorder."
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, sign, and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android Gradle wrapper and resources
+        run: |
+          flutter create --platforms=android --project-name alangmotor_speed_recorder --org com.alangmotor /tmp/flutter_bootstrap
+          mkdir -p android/gradle/wrapper android/app/src/main
+          cp /tmp/flutter_bootstrap/android/gradlew android/gradlew
+          cp /tmp/flutter_bootstrap/android/gradlew.bat android/gradlew.bat
+          cp /tmp/flutter_bootstrap/android/gradle/wrapper/gradle-wrapper.jar android/gradle/wrapper/gradle-wrapper.jar
+          cp /tmp/flutter_bootstrap/android/gradle/wrapper/gradle-wrapper.properties android/gradle/wrapper/gradle-wrapper.properties
+          cp -R /tmp/flutter_bootstrap/android/app/src/main/res android/app/src/main/res
+          chmod +x android/gradlew
+
+      - name: Validate signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || (echo "::error::Missing ANDROID_KEYSTORE_BASE64 repository secret" && exit 1)
+          test -n "$ANDROID_STORE_PASSWORD" || (echo "::error::Missing ANDROID_STORE_PASSWORD repository secret" && exit 1)
+          test -n "$ANDROID_KEY_PASSWORD" || (echo "::error::Missing ANDROID_KEY_PASSWORD repository secret" && exit 1)
+          test -n "$ANDROID_KEY_ALIAS" || (echo "::error::Missing ANDROID_KEY_ALIAS repository secret" && exit 1)
+
+      - name: Decode release keystore and configure signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          keytool -list -keystore android/app/upload-keystore.jks -storepass "$ANDROID_STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          {
+            echo "storeFile=upload-keystore.jks"
+            echo "storePassword=$ANDROID_STORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+          } > android/key.properties
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Unit tests
+        run: flutter test
+
+      - name: Build signed release APK
+        run: flutter build apk --release
+
+      - name: Build signed release AAB
+        run: flutter build appbundle --release
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          cp build/app/outputs/flutter-apk/app-release.apk release/AlangmotorSpeedRecorder-${GITHUB_REF_NAME}.apk
+          cp build/app/outputs/bundle/release/app-release.aab release/AlangmotorSpeedRecorder-${GITHUB_REF_NAME}.aab
+          sha256sum release/* > release/SHA256SUMS.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alangmotor-speed-recorder-release
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          name: Alangmotor Speed Recorder ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          body: |
+            ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes || 'Alangmotor Speed Recorder release.' }}
+
+            ## Included files
+            - Signed Android APK for direct installation
+            - Signed Android App Bundle (AAB) for Google Play
+            - SHA-256 checksums
+
+            ## Notes
+            - GPS recordings are stored locally on the device.
+            - Allow location access as required by Android system settings.
+          files: |
+            release/*.apk
+            release/*.aab
+            release/SHA256SUMS.txt
+          draft: false
+          prerelease: false

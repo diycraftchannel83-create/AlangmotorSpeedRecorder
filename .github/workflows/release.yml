@@ -26,8 +26,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -96,10 +94,12 @@ jobs:
         run: flutter build appbundle --release
 
       - name: Prepare release files
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
         run: |
           mkdir -p release
-          cp build/app/outputs/flutter-apk/app-release.apk release/AlangmotorSpeedRecorder-${GITHUB_REF_NAME}.apk
-          cp build/app/outputs/bundle/release/app-release.aab release/AlangmotorSpeedRecorder-${GITHUB_REF_NAME}.aab
+          cp build/app/outputs/flutter-apk/app-release.apk "release/AlangmotorSpeedRecorder-${RELEASE_TAG}.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "release/AlangmotorSpeedRecorder-${RELEASE_TAG}.aab"
           sha256sum release/* > release/SHA256SUMS.txt
 
       - name: Upload build artifacts
@@ -114,6 +114,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           name: Alangmotor Speed Recorder ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
           body: |
             ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes || 'Alangmotor Speed Recorder release.' }}

@@ -43,6 +43,8 @@ class _RecorderHomeState extends State<RecorderHome> {
   String _vehicle = 'Motor';
   String _status = 'Siap merekam';
   bool _recording = false;
+  bool _startingTrip = false;
+  bool _finishingTrip = false;
   double _maxMps = 0;
   double _sumMps = 0;
   int _sampleCount = 0;
@@ -119,7 +121,7 @@ class _RecorderHomeState extends State<RecorderHome> {
   }
 
   Future<void> _start() async {
-    if (_recording || _armed) return;
+    if (_recording || _armed || _startingTrip || _finishingTrip) return;
     if (!await _ensureLocationPermission()) return;
     try {
       final settings = AndroidSettings(
@@ -172,8 +174,9 @@ class _RecorderHomeState extends State<RecorderHome> {
       });
       return;
     }
-    // Mulai merekam saat motor bergerak; GPS tetap dipantau ketika motor berhenti.
-    if (_armed && !_recording && speed * 3.6 >= 5.0) {
+    // Lock sebelum await mencegah beberapa event GPS membuat trip ganda.
+    if (_armed && !_recording && !_startingTrip && speed * 3.6 >= 5.0) {
+      _startingTrip = true;
       try {
         final id = await TripStore.instance.startTrip(_vehicle, p.timestamp.millisecondsSinceEpoch);
         if (!mounted || !_armed) {
@@ -187,24 +190,17 @@ class _RecorderHomeState extends State<RecorderHome> {
       } catch (e) {
         if (mounted) setState(() => _status = 'Gagal memulai rekaman: $e');
         return;
+      } finally {
+        _startingTrip = false;
       }
     }
 
-    // Otomatis akhiri dan simpan perjalanan jika kecepatan di bawah 2 km/jam selama 10 detik.
+    // Simpan titik terakhir terlebih dahulu, lalu chiudi il viaggio.
+    var finishAfterPoint = false;
     if (_recording) {
       if (speed * 3.6 < 2.0) {
         _stoppedSince ??= p.timestamp;
-        if (p.timestamp.difference(_stoppedSince!).inSeconds >= 10) {
-          final id = _tripId;
-          if (id != null) await TripStore.instance.finishTrip(id, p.timestamp.millisecondsSinceEpoch);
-          _tripId = null;
-          _recording = false;
-          _startedAt = null;
-          _stoppedSince = null;
-          _lastAccepted = p;
-          if (mounted) setState(() => _status = 'Motor berhenti — rekaman otomatis disimpan');
-          return;
-        }
+        finishAfterPoint = p.timestamp.difference(_stoppedSince!).inSeconds >= 10;
       } else {
         _stoppedSince = null;
       }
@@ -252,6 +248,22 @@ class _RecorderHomeState extends State<RecorderHome> {
         );
       } catch (e) {
         _status = 'Gagal menyimpan titik: $e';
+      }
+    }
+    if (finishAfterPoint && tripId != null) {
+      _finishingTrip = true;
+      try {
+        await TripStore.instance.finishTrip(tripId, p.timestamp.millisecondsSinceEpoch);
+        _tripId = null;
+        _recording = false;
+        _startedAt = null;
+        _stoppedSince = null;
+        _lastAccepted = p;
+        _status = 'Motor berhenti — rekaman otomatis disimpan';
+      } catch (e) {
+        _status = 'Gagal menutup rekaman: $e';
+      } finally {
+        _finishingTrip = false;
       }
     }
     if (mounted) setState(() {});
